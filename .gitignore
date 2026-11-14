@@ -8,6 +8,7 @@
 !/.github/CODEOWNERS
 !/Cargo.toml
 !/Cargo.lock
+!/LICENSE
 !/README.md
 !/README.es.md
 !/assets/
