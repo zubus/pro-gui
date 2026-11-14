@@ -1,5 +1,11 @@
 /*
 !/.gitignore
+!/.github/
+/.github/**
+!/.github/workflows/
+!/.github/workflows/ci.yml
+!/.github/pull_request_template.md
+!/.github/CODEOWNERS
 !/Cargo.toml
 !/Cargo.lock
 !/README.md
