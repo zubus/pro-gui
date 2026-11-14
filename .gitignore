@@ -1,0 +1,17 @@
+/*
+!/.gitignore
+!/Cargo.toml
+!/Cargo.lock
+!/README.md
+!/README.es.md
+!/assets/
+/assets/**
+!/assets/pro-gui.png
+!/src/
+/src/**
+!/src/**/
+!/src/**/*.rs
+!/tests/
+/tests/**
+!/tests/**/
+!/tests/**/*.rs
