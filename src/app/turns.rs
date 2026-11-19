@@ -423,25 +423,24 @@ impl ProGuiApp {
 
         let pending_before = self.pending_attachments.len();
         if self.pending_attachments.is_empty() {
-            let stored: Vec<(AttachmentMeta, Vec<u8>)> = self
+            let attachments = self
                 .conversations
                 .iter()
                 .flat_map(|conversation| conversation.turns.iter())
                 .find(|turn| turn.id == turn_id)
-                .map(|turn| {
-                    turn.attachments
-                        .iter()
-                        .filter_map(|meta| {
-                            self.db
-                                .load_attachment_bytes(meta.id)
-                                .ok()
-                                .map(|bytes| (meta.clone(), bytes))
-                        })
-                        .collect()
-                })
+                .map(|turn| turn.attachments.as_slice())
                 .unwrap_or_default();
-            for (meta, bytes) in stored {
-                self.add_pending_attachment(meta.file_name, meta.mime, bytes);
+            match load_stored_attachments(&self.db, attachments) {
+                Ok(stored) => {
+                    for (meta, bytes) in stored {
+                        self.add_pending_attachment(meta.file_name, meta.mime, bytes);
+                    }
+                }
+                Err(err) => {
+                    self.banner = Some(format!("Could not load an attachment to resend: {err}"));
+                    self.editing_turn = Some(edit);
+                    return;
+                }
             }
         }
 
@@ -536,6 +535,16 @@ impl ProGuiApp {
             return;
         };
 
+        let image_urls = match load_stored_attachments(&self.db, &turn_snapshot.attachments) {
+            Ok(stored) => stored
+                .iter()
+                .map(|(meta, bytes)| attachment_data_url(&meta.mime, bytes))
+                .collect::<Vec<_>>(),
+            Err(err) => {
+                self.banner = Some(format!("Could not load an attachment to resend: {err}"));
+                return;
+            }
+        };
         let request_service_tier = turn_snapshot.service_tier.clone();
 
         if let Err(err) = self.db.reset_turn_for_retry(turn_id, &request_service_tier) {
@@ -580,17 +589,6 @@ impl ProGuiApp {
                 auto_retry_attempts: u8::from(automatic),
             },
         );
-
-        let image_urls = turn_snapshot
-            .attachments
-            .iter()
-            .filter_map(|attachment| {
-                self.db
-                    .load_attachment_bytes(attachment.id)
-                    .ok()
-                    .map(|bytes| attachment_data_url(&attachment.mime, &bytes))
-            })
-            .collect::<Vec<_>>();
 
         providers::spawn_new_turn(
             self.tx.clone(),
