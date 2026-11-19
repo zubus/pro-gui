@@ -108,6 +108,42 @@ fn carbon_gets_long_decode_too() {
 }
 
 #[test]
+fn neon_comes_first_with_long_decode_and_priority() {
+    assert_eq!(MODEL_OPTIONS[0].id, NEON_MODEL);
+    assert_eq!(MODEL_OPTIONS[0].label, "Gemini 4 Neon");
+    assert_eq!(max_output_tokens(NEON_MODEL), LONG_DECODE_MAX_OUTPUT_TOKENS);
+
+    let body = request_body(&RequestSpec {
+        model: NEON_MODEL.to_owned(),
+        max_output_tokens: 5_000_000,
+        reasoning_effort: "xhigh".to_owned(),
+        service_tier: "priority".to_owned(),
+        ..spec()
+    });
+    assert_eq!(body["model"], "gemini-4-neon");
+    assert_eq!(body["generation_config"]["max_output_tokens"], 1_048_576);
+    assert_eq!(body["generation_config"]["thinking_level"], "xhigh");
+    assert_eq!(body["service_tier"], "priority");
+}
+
+#[test]
+fn only_neon_thinks_at_xhigh_and_each_model_starts_at_its_top_level() {
+    assert_eq!(
+        thinking_levels(NEON_MODEL),
+        &["low", "medium", "high", "xhigh"]
+    );
+    assert_eq!(default_thinking_level(NEON_MODEL), "xhigh");
+    for model in [CARBON_MODEL, ARGON_MODEL, "gemini-3.8-flash"] {
+        assert_eq!(
+            thinking_levels(model),
+            &["low", "medium", "high"],
+            "{model}"
+        );
+        assert_eq!(default_thinking_level(model), "high", "{model}");
+    }
+}
+
+#[test]
 fn a_fetched_answer_joins_every_hop_and_skips_the_prompt() {
     let fetched = Fetched::from_value(&json!({
         "id": "v1_abc",
@@ -388,6 +424,7 @@ fn stream_errors_switch_to_polling() {
 
 #[test]
 fn gemini_and_gemma_ids_are_routed_here() {
+    assert!(is_gemini_model(NEON_MODEL));
     assert!(is_gemini_model(CARBON_MODEL));
     assert!(is_gemini_model(ARGON_MODEL));
     assert!(is_gemini_model("gemma-4-31b-it"));

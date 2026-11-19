@@ -186,7 +186,7 @@ impl ProGuiApp {
                                     summary.on_hover_text(
                                         "Cumulative billed tokens across this chat's turns.\n\
                                           in: total input tokens billed across turns and server-side long-decode hops \
-                                          (on Gemini 4 Carbon and Argon, each hop re-reads the context at the cached \
+                                          (on Gemini 4 Neon, Carbon and Argon, each hop re-reads the context at the cached \
                                           rate, so billed input across hops can exceed the 1M context window).\n\
                                           out: total billed output tokens (answer + reasoning).\n\
                                           reasoning: thinking tokens (included in out).",

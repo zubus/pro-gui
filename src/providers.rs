@@ -101,7 +101,7 @@ pub fn model_display_name(model: &str) -> String {
 pub fn effort_options(model: &str) -> &'static [&'static str] {
     match Provider::of(model) {
         Provider::OpenAi => openai::REASONING_EFFORT_OPTIONS,
-        Provider::Gemini => gemini::THINKING_LEVELS,
+        Provider::Gemini => gemini::thinking_levels(model),
         Provider::Anthropic => anthropic::EFFORT_OPTIONS,
     }
 }
@@ -109,7 +109,7 @@ pub fn effort_options(model: &str) -> &'static [&'static str] {
 pub fn default_reasoning_effort(model: &str) -> &'static str {
     match Provider::of(model) {
         Provider::OpenAi => openai::default_reasoning_effort(model),
-        Provider::Gemini => gemini::DEFAULT_THINKING_LEVEL,
+        Provider::Gemini => gemini::default_thinking_level(model),
         Provider::Anthropic => anthropic::DEFAULT_EFFORT,
     }
 }

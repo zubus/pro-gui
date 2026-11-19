@@ -537,6 +537,11 @@ fn switching_model_takes_the_new_models_whole_output_limit() {
 
     let claude = composer_settings_for_model(&carbon, "claude-fable-5-2".to_owned());
     assert_eq!(claude.max_output_tokens, 128_000);
+
+    let neon = composer_settings_for_model(&gpt, "gemini-4-neon".to_owned());
+    assert_eq!(neon.effort, "xhigh");
+    let carbon_again = composer_settings_for_model(&neon, "gemini-4-carbon".to_owned());
+    assert_eq!(carbon_again.effort, "high");
 }
 
 #[test]
