@@ -4,7 +4,8 @@ use anyhow::{Context as _, Result};
 use rusqlite::{Connection, params};
 
 use crate::models::{
-    AppSettings, AttachmentMeta, Conversation, Folder, NewTurn, Turn, TurnSnapshot, now_string,
+    AppSettings, AttachmentMeta, BlockRange, Conversation, Folder, NewTurn, Turn, TurnSnapshot,
+    now_string,
 };
 use crate::providers;
 
@@ -526,7 +527,7 @@ impl Database {
         Ok(turns)
     }
 
-    pub fn load_turn_blocks(&self, turn_id: i64) -> Result<Vec<(String, usize, usize)>> {
+    pub fn load_turn_blocks(&self, turn_id: i64) -> Result<Vec<BlockRange>> {
         let mut stmt = self.conn.prepare(
             "
             SELECT label, start_byte, end_byte
@@ -537,21 +538,17 @@ impl Database {
         )?;
         let blocks = stmt
             .query_map(params![turn_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?.max(0) as usize,
-                    row.get::<_, i64>(2)?.max(0) as usize,
-                ))
+                Ok(BlockRange {
+                    label: row.get(0)?,
+                    start: row.get::<_, i64>(1)?.max(0) as usize,
+                    end: row.get::<_, i64>(2)?.max(0) as usize,
+                })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(blocks)
     }
 
-    pub fn replace_turn_blocks(
-        &self,
-        turn_id: i64,
-        blocks: &[(String, usize, usize)],
-    ) -> Result<()> {
+    pub fn replace_turn_blocks(&self, turn_id: i64, blocks: &[BlockRange]) -> Result<()> {
         self.atomically(|_| {
             self.conn.execute(
                 "DELETE FROM turn_blocks WHERE turn_id = ?",
@@ -563,13 +560,13 @@ impl Database {
                 VALUES (?, ?, ?, ?, ?)
                 ",
             )?;
-            for (ordinal, (label, start, end)) in blocks.iter().enumerate() {
+            for (ordinal, block) in blocks.iter().enumerate() {
                 stmt.execute(params![
                     turn_id,
                     ordinal as i64,
-                    label,
-                    *start as i64,
-                    *end as i64
+                    block.label,
+                    block.start as i64,
+                    block.end as i64
                 ])?;
             }
             Ok(())

@@ -1,3 +1,7 @@
+use std::fmt::Write as _;
+
+use anyhow::Context as _;
+
 use super::*;
 
 pub(super) fn slugify_title(title: &str) -> String {
@@ -30,15 +34,19 @@ pub(super) fn export_directory() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-pub(super) fn write_export_file(
-    slug: &str,
-    extension: &str,
-    content: &str,
-) -> Result<String, String> {
+pub(super) fn write_export_file(slug: &str, extension: &str, content: &str) -> Result<PathBuf> {
     let timestamp = Local::now().format("%Y%m%d-%H%M%S");
     let path = export_directory().join(format!("pro-gui-{slug}-{timestamp}.{extension}"));
-    std::fs::write(&path, content).map_err(|err| err.to_string())?;
-    Ok(path.display().to_string())
+    std::fs::write(&path, content)
+        .with_context(|| format!("could not write {}", path.display()))?;
+    Ok(path)
+}
+
+pub(super) fn export_banner(result: Result<PathBuf>) -> String {
+    match result {
+        Ok(path) => format!("Exported to {}", path.display()),
+        Err(err) => format!("Export failed: {err:#}"),
+    }
 }
 
 pub(super) fn conversation_markdown(conversation: &Conversation) -> String {
@@ -49,31 +57,35 @@ pub(super) fn conversation_markdown(conversation: &Conversation) -> String {
         out.push_str("\n\n");
     }
     for turn in &conversation.turns {
-        out.push_str(&format!(
+        let _ = write!(
+            out,
             "## You ({})\n\n{}\n\n",
             turn.created_at, turn.prompt_text
-        ));
+        );
         for attachment in &turn.attachments {
-            out.push_str(&format!(
-                "*Attachment: {} ({}, {})*\n",
+            let _ = writeln!(
+                out,
+                "*Attachment: {} ({}, {})*",
                 attachment.file_name,
                 attachment.mime,
                 format_bytes(attachment.byte_len)
-            ));
+            );
         }
         if !turn.attachments.is_empty() {
             out.push('\n');
         }
-        out.push_str(&format!(
+        let _ = write!(
+            out,
             "## {} ({}, {})\n\n",
             turn.model, turn.updated_at, turn.status
-        ));
-        out.push_str(&format!(
+        );
+        let _ = write!(
+            out,
             "`model={} reasoning.effort={} service_tier={} max_output_tokens={}`\n\n",
             turn.model, turn.reasoning_effort, turn.service_tier, turn.max_output_tokens
-        ));
+        );
         if let Some(error) = &turn.error_text {
-            out.push_str(&format!("> Error: {error}\n\n"));
+            let _ = write!(out, "> Error: {error}\n\n");
         }
         if !turn.answer_text.is_empty() {
             out.push_str(&turn.answer_text);
@@ -138,48 +150,47 @@ pub(super) fn conversation_json_value(conversation: &Conversation) -> serde_json
     })
 }
 
-pub(super) fn conversation_json(conversation: &Conversation) -> Result<String, serde_json::Error> {
-    serde_json::to_string_pretty(&conversation_json_value(conversation))
+pub(super) fn conversation_json(conversation: &Conversation) -> Result<String> {
+    Ok(serde_json::to_string_pretty(&conversation_json_value(
+        conversation,
+    ))?)
 }
 
 pub(super) fn export_all_chats(
     db_path: &std::path::Path,
     out_dir: &std::path::Path,
-) -> Result<String, String> {
+) -> Result<PathBuf> {
     use std::io::Write;
 
-    let db = Database::open_reader(db_path).map_err(|err| err.to_string())?;
-    let conversations = db
-        .load_conversation_summaries()
-        .map_err(|err| err.to_string())?;
+    let db = Database::open_reader(db_path)?;
+    let conversations = db.load_conversation_summaries()?;
     let timestamp = Local::now().format("%Y%m%d-%H%M%S");
     let path = out_dir.join(format!("pro-gui-all-chats-{timestamp}.json"));
-    let file = std::fs::File::create(&path).map_err(|err| err.to_string())?;
+    let file = std::fs::File::create(&path)
+        .with_context(|| format!("could not create {}", path.display()))?;
     let mut out = std::io::BufWriter::new(file);
-    let fail = |err: &dyn std::fmt::Display| err.to_string();
 
     write!(
         out,
         "{{\"exported_at\":{},\"conversations\":[",
         serde_json::Value::String(now_string())
-    )
-    .map_err(|err| fail(&err))?;
+    )?;
     for (index, mut conversation) in conversations.into_iter().enumerate() {
-        conversation.turns = db.load_turns(conversation.id).map_err(|err| fail(&err))?;
+        conversation.turns = db.load_turns(conversation.id)?;
         if index > 0 {
-            out.write_all(b",").map_err(|err| fail(&err))?;
+            out.write_all(b",")?;
         }
-        serde_json::to_writer(&mut out, &conversation_json_value(&conversation))
-            .map_err(|err| fail(&err))?;
+        serde_json::to_writer(&mut out, &conversation_json_value(&conversation))?;
     }
-    out.write_all(b"]}\n").map_err(|err| fail(&err))?;
-    out.flush().map_err(|err| fail(&err))?;
-    Ok(path.display().to_string())
+    out.write_all(b"]}\n")?;
+    out.flush()?;
+    Ok(path)
 }
 
-pub(super) fn backup_database_file(db: &Database) -> Result<String, String> {
+pub(super) fn backup_database_file(db: &Database) -> Result<PathBuf> {
     let timestamp = Local::now().format("%Y%m%d-%H%M%S");
     let target = export_directory().join(format!("pro-gui-backup-{timestamp}.sqlite3"));
-    db.backup_to(&target).map_err(|err| err.to_string())?;
-    Ok(target.display().to_string())
+    db.backup_to(&target)
+        .with_context(|| format!("could not back up to {}", target.display()))?;
+    Ok(target)
 }

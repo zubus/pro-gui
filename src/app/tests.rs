@@ -313,7 +313,6 @@ fn turns_stored_before_the_prefix_existed_fall_back_to_the_marker() {
     let packed = repoctx::pack_context(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
         &["Cargo.toml".to_owned()],
-        true,
     );
     let stored = format!(
         "{}{PACKED_CONTEXT_SEPARATOR}Explain this file.",
@@ -694,6 +693,72 @@ fn exporting_all_chats_streams_valid_json_with_every_turn() {
             .all(|chat| chat["turns"].as_array().unwrap().len() == 1)
     );
     assert!(json["exported_at"].is_string());
+}
+
+#[test]
+fn a_time_stamp_shows_month_day_and_minute_without_a_panic() {
+    assert_eq!(relative_time("2026-11-18 21:45:10"), "11-18 21:45");
+    assert_eq!(relative_time("2026-11-18"), "2026-11-18");
+    assert_eq!(relative_time("éééééééé"), "éééééééé");
+}
+
+#[test]
+fn a_missing_attachment_fails_the_load_instead_of_being_dropped() {
+    let dir = std::env::temp_dir().join(format!("pro-gui-attachments-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = Database::open(&dir.join("source.sqlite3")).unwrap();
+    let chat = db.create_conversation("Chat", None).unwrap();
+    let turn = db
+        .insert_turn(&NewTurn {
+            conversation_id: chat,
+            prompt_text: "What is in the picture?".to_owned(),
+            prompt_prefix_len: 0,
+            model: "gpt-6-astra-pro".to_owned(),
+            max_output_tokens: 1_024,
+            reasoning_effort: "max".to_owned(),
+            reasoning_summary: "auto".to_owned(),
+            service_tier: "default".to_owned(),
+            background: true,
+            store: true,
+            parent_response_id: None,
+        })
+        .unwrap();
+    let saved = db
+        .insert_attachment(turn.id, "image/png", "cat.png", b"png bytes")
+        .unwrap();
+    let missing = AttachmentMeta {
+        id: saved.id + 1,
+        ..saved.clone()
+    };
+
+    let loaded = load_stored_attachments(&db, std::slice::from_ref(&saved));
+    let with_missing = load_stored_attachments(&db, &[saved, missing]);
+    drop(db);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let loaded = loaded.unwrap();
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].0.file_name, "cat.png");
+    assert_eq!(loaded[0].1, b"png bytes");
+    assert!(with_missing.is_err());
+}
+
+#[test]
+fn a_failed_export_names_the_file_it_could_not_write() {
+    let dir = std::env::temp_dir().join(format!("pro-gui-export-fail-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db_path = dir.join("source.sqlite3");
+    drop(Database::open(&db_path).unwrap());
+
+    let result = export_all_chats(&db_path, &dir.join("missing-folder"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let banner = export_banner(result);
+    assert!(
+        banner.starts_with("Export failed: could not create "),
+        "{banner}"
+    );
+    assert!(banner.contains("missing-folder"), "{banner}");
 }
 
 #[test]

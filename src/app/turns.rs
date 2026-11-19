@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use super::*;
 
 impl ProGuiApp {
@@ -116,10 +118,9 @@ impl ProGuiApp {
             self.save_selected_model_setting();
         }
 
-        let should_rename = self
-            .selected_conversation()
-            .map(|conversation| conversation.turns.is_empty() && conversation.title == "New chat")
-            .unwrap_or(false);
+        let should_rename = self.selected_conversation().is_some_and(|conversation| {
+            conversation.turns.is_empty() && conversation.title == "New chat"
+        });
 
         if should_rename {
             let title_source = if prompt.is_empty() {
@@ -204,7 +205,7 @@ impl ProGuiApp {
         let context_source = context_source.filter(|_| !self.skip_context_once);
         self.skip_context_once = false;
         if let Some((root, context_selection)) = context_source {
-            let packed = repoctx::pack_context(&root, &context_selection, true);
+            let packed = repoctx::pack_context(&root, &context_selection);
             let already_in_chain = packed.included > 0
                 && chained_parent.is_some_and(|parent| {
                     self.conversations
@@ -320,7 +321,7 @@ impl ProGuiApp {
         }
         if self.conversations[conversation_index].turns[turn_index + 1..]
             .iter()
-            .any(|turn| turn.is_pending())
+            .any(Turn::is_pending)
         {
             self.banner = Some(
                 "A later message is still running. Cancel it before resending this one.".to_owned(),
@@ -422,25 +423,24 @@ impl ProGuiApp {
 
         let pending_before = self.pending_attachments.len();
         if self.pending_attachments.is_empty() {
-            let stored: Vec<(AttachmentMeta, Vec<u8>)> = self
+            let attachments = self
                 .conversations
                 .iter()
                 .flat_map(|conversation| conversation.turns.iter())
                 .find(|turn| turn.id == turn_id)
-                .map(|turn| {
-                    turn.attachments
-                        .iter()
-                        .filter_map(|meta| {
-                            self.db
-                                .load_attachment_bytes(meta.id)
-                                .ok()
-                                .map(|bytes| (meta.clone(), bytes))
-                        })
-                        .collect()
-                })
+                .map(|turn| turn.attachments.as_slice())
                 .unwrap_or_default();
-            for (meta, bytes) in stored {
-                self.add_pending_attachment(meta.file_name, meta.mime, bytes);
+            match load_stored_attachments(&self.db, attachments) {
+                Ok(stored) => {
+                    for (meta, bytes) in stored {
+                        self.add_pending_attachment(meta.file_name, meta.mime, bytes);
+                    }
+                }
+                Err(err) => {
+                    self.banner = Some(format!("Could not load an attachment to resend: {err}"));
+                    self.editing_turn = Some(edit);
+                    return;
+                }
             }
         }
 
@@ -495,13 +495,7 @@ impl ProGuiApp {
                 String::new()
             };
             providers::spawn_cancel_turn(self.tx.clone(), turn_id, response_id, model, api_key);
-            self.runtime
-                .entry(turn_id)
-                .or_insert(TurnRuntime {
-                    note: None,
-                    auto_retry_attempts: 0,
-                })
-                .note = Some("Cancel requested...".to_owned());
+            self.runtime.entry(turn_id).or_default().note = Some("Cancel requested...".to_owned());
         }
     }
 
@@ -541,6 +535,16 @@ impl ProGuiApp {
             return;
         };
 
+        let image_urls = match load_stored_attachments(&self.db, &turn_snapshot.attachments) {
+            Ok(stored) => stored
+                .iter()
+                .map(|(meta, bytes)| attachment_data_url(&meta.mime, bytes))
+                .collect::<Vec<_>>(),
+            Err(err) => {
+                self.banner = Some(format!("Could not load an attachment to resend: {err}"));
+                return;
+            }
+        };
         let request_service_tier = turn_snapshot.service_tier.clone();
 
         if let Err(err) = self.db.reset_turn_for_retry(turn_id, &request_service_tier) {
@@ -585,17 +589,6 @@ impl ProGuiApp {
                 auto_retry_attempts: u8::from(automatic),
             },
         );
-
-        let image_urls = turn_snapshot
-            .attachments
-            .iter()
-            .filter_map(|attachment| {
-                self.db
-                    .load_attachment_bytes(attachment.id)
-                    .ok()
-                    .map(|bytes| attachment_data_url(&attachment.mime, &bytes))
-            })
-            .collect::<Vec<_>>();
 
         providers::spawn_new_turn(
             self.tx.clone(),
@@ -692,10 +685,7 @@ impl ProGuiApp {
     pub(super) fn process_events(&mut self) {
         if let Some(result) = self.export_job.as_ref().and_then(|job| job.try_recv().ok()) {
             self.export_job = None;
-            self.banner = Some(match result {
-                Ok(path) => format!("Exported to {path}"),
-                Err(err) => format!("Export failed: {err}"),
-            });
+            self.banner = Some(export_banner(result));
         }
         while let Ok(tagged) = self.rx.try_recv() {
             if !tagged.is_current() {
@@ -758,13 +748,7 @@ impl ProGuiApp {
                 }
 
                 if turn.is_pending() {
-                    self.runtime
-                        .entry(turn.id)
-                        .or_insert(TurnRuntime {
-                            note: None,
-                            auto_retry_attempts: 0,
-                        })
-                        .note = None;
+                    self.runtime.entry(turn.id).or_default().note = None;
                 } else {
                     self.runtime.remove(&turn.id);
                 }
@@ -911,12 +895,13 @@ pub(super) fn foreign_exchanges(
             0 => String::new(),
             count => format!("\n[{count} attached image(s)]"),
         };
-        exchanges.push_str(&format!(
+        let _ = write!(
+            exchanges,
             "<user>\n{}{images}\n</user>\n<assistant model=\"{}\">\n{}\n</assistant>\n\n",
             history_text(turn, ranges),
             turn.model,
             turn.answer_text.trim()
-        ));
+        );
     }
     if exchanges.is_empty() {
         return exchanges;
@@ -970,12 +955,12 @@ pub(super) fn anthropic_history(
 
 pub(super) fn history_text(turn: &Turn, ranges: &HashMap<i64, Vec<BlockRange>>) -> String {
     let mut text = String::new();
-    for (label, start, end) in ranges.get(&turn.id).into_iter().flatten() {
-        if label == REPOSITORY_CONTEXT_LABEL {
+    for range in ranges.get(&turn.id).into_iter().flatten() {
+        if range.label == REPOSITORY_CONTEXT_LABEL {
             continue;
         }
-        if let Some(body) = turn.prompt_text.get(*start..*end) {
-            text.push_str(&format!("## {label}\n\n{}\n\n", body.trim_end()));
+        if let Some(body) = turn.prompt_text.get(range.start..range.end) {
+            let _ = write!(text, "## {}\n\n{}\n\n", range.label, body.trim_end());
         }
     }
     text.push_str(split_prompt(turn).1.trim());

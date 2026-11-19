@@ -249,6 +249,16 @@ pub(super) fn attachment_mime_for_path(path: &std::path::Path) -> Option<&'stati
     }
 }
 
+pub(super) fn load_stored_attachments(
+    db: &Database,
+    attachments: &[AttachmentMeta],
+) -> Result<Vec<(AttachmentMeta, Vec<u8>)>> {
+    attachments
+        .iter()
+        .map(|meta| Ok((meta.clone(), db.load_attachment_bytes(meta.id)?)))
+        .collect()
+}
+
 pub(super) fn attachment_data_url(mime: &str, bytes: &[u8]) -> String {
     use base64::Engine as _;
     format!(

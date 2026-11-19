@@ -17,6 +17,7 @@ const MAX_CREATE_ATTEMPTS: u32 = 5;
 
 const NOTE_SPACING: Duration = Duration::from_secs(1);
 
+#[derive(Debug)]
 pub struct AttemptEvent {
     pub attempt: u64,
     pub event: WorkerEvent,

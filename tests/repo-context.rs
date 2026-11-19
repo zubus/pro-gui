@@ -16,7 +16,7 @@ fn scan_and_pack_this_repo() {
     );
 
     let selected = vec!["src/main.rs".to_owned(), "Cargo.toml".to_owned()];
-    let packed = pack_context(root, &selected, true);
+    let packed = pack_context(root, &selected);
     assert_eq!(packed.included, 2);
     assert!(packed.text.contains("### src/main.rs"));
     assert!(packed.text.contains("```rust"));
@@ -76,7 +76,7 @@ fn only_a_real_extension_marks_a_file_as_binary() {
         std::fs::write(root.join(name), "fn main() {}\n").expect("temp file is writable");
     }
     let tree = scan_workspace(&root);
-    let packed = pack_context(&root, &["Main.RS".to_owned()], true);
+    let packed = pack_context(&root, &["Main.RS".to_owned()]);
     let _ = std::fs::remove_dir_all(&root);
 
     let skip_reason = |rel_path: &str| {

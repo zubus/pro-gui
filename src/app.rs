@@ -17,8 +17,8 @@ use crate::context as repoctx;
 use crate::db::Database;
 use crate::docedit::DocumentEditor;
 use crate::models::{
-    AttachmentMeta, Conversation, Folder, HistoryMessage, HistoryRole, NewTurn, PromptBlock,
-    RequestSpec, Turn, TurnSnapshot, WorkerEvent, format_compact_count, now_string,
+    AttachmentMeta, BlockRange, Conversation, Folder, HistoryMessage, HistoryRole, NewTurn,
+    PromptBlock, RequestSpec, Turn, TurnSnapshot, WorkerEvent, format_compact_count, now_string,
     title_from_prompt,
 };
 use crate::providers::{self, AttemptEvent, Provider, openai};
@@ -43,8 +43,6 @@ use export::*;
 use markdown::*;
 use theme::*;
 use turns::*;
-
-type BlockRange = (String, usize, usize);
 
 const PACKED_CONTEXT_SEPARATOR: &str = "---\n\nUser request:\n\n";
 
@@ -131,7 +129,7 @@ pub struct ProGuiApp {
     answer_cache: HashMap<i64, CachedAnswerBlocks>,
     turn_heights: HashMap<i64, (u64, f32)>,
     persisted_at: HashMap<i64, Instant>,
-    export_job: Option<Receiver<Result<String, String>>>,
+    export_job: Option<Receiver<Result<PathBuf>>>,
     image_tx: Sender<ImageResult>,
     image_rx: Receiver<ImageResult>,
     applied_font_size: f32,
@@ -139,7 +137,7 @@ pub struct ProGuiApp {
     banner_timer: Option<(String, Instant)>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct TurnRuntime {
     note: Option<String>,
     auto_retry_attempts: u8,
@@ -657,8 +655,7 @@ impl ProGuiApp {
                 let restart = self
                     .banner_timer
                     .as_ref()
-                    .map(|(text, _)| *text != current)
-                    .unwrap_or(true);
+                    .is_none_or(|(text, _)| *text != current);
                 if restart {
                     self.banner_timer = Some((current, Instant::now()));
                     ctx.request_repaint_after(BANNER_LIFETIME);
@@ -750,7 +747,7 @@ impl ProGuiApp {
     }
 
     fn save_selected_model_setting(&mut self) {
-        let normalized = openai::normalize_model(&self.selected_model).to_owned();
+        let normalized = openai::normalize_model(&self.selected_model);
         if normalized != self.selected_model {
             self.selected_model = normalized;
         }
@@ -906,10 +903,7 @@ fn database_path() -> PathBuf {
 }
 
 fn relative_time(value: &str) -> String {
-    if value.len() >= 16 {
-        return value[5..16].to_owned();
-    }
-    value.to_owned()
+    value.get(5..16).unwrap_or(value).to_owned()
 }
 
 fn truncate_text(value: &str, max_chars: usize) -> String {

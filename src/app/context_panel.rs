@@ -4,6 +4,7 @@ use std::hash::{Hash, Hasher};
 use super::*;
 
 const TOKEN_REVALIDATE_INTERVAL: Duration = Duration::from_secs(1);
+const TOKEN_BYTES_PER_FRAME: usize = 64 * 1024;
 
 pub(super) struct ContextRowsCache {
     key: u64,
@@ -37,8 +38,7 @@ impl ProGuiApp {
         let path_string = folder.display().to_string();
         let changed = self
             .selected_conversation()
-            .map(|conversation| conversation.workspace_path != path_string)
-            .unwrap_or(true);
+            .is_none_or(|conversation| conversation.workspace_path != path_string);
         if let Some(conversation) = self.selected_conversation_mut() {
             conversation.workspace_path = path_string.clone();
             if changed {
@@ -152,8 +152,6 @@ impl ProGuiApp {
         let root = PathBuf::from(&conversation.workspace_path);
         let selection = conversation.context_selection.clone();
 
-        const BYTES_PER_FRAME: usize = 64 * 1024;
-
         let mut counted_bytes = 0;
         let mut finished = true;
         for rel_path in &selection {
@@ -167,7 +165,7 @@ impl ProGuiApp {
             {
                 continue;
             }
-            if counted_bytes >= BYTES_PER_FRAME {
+            if counted_bytes >= TOKEN_BYTES_PER_FRAME {
                 finished = false;
                 break;
             }
@@ -619,7 +617,7 @@ impl ProGuiApp {
                 .selected_conversation()
                 .map(|conversation| conversation.context_selection.clone())
                 .unwrap_or_default();
-            let packed = repoctx::pack_context(&PathBuf::from(&workspace), &selected, true);
+            let packed = repoctx::pack_context(&PathBuf::from(&workspace), &selected);
             ctx.copy_text(packed.text);
             self.banner = Some(format!(
                 "Copied {} file(s) of context to the clipboard (\u{2248}{} tokens).",

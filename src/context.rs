@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -21,13 +22,14 @@ pub fn approx_tokens_for_bytes(bytes: u64) -> usize {
     (bytes / 4) as usize
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileEntry {
     pub rel_path: String,
     pub size: u64,
     pub skip_reason: Option<&'static str>,
 }
 
+#[derive(Debug)]
 pub struct WorkspaceTree {
     pub root: PathBuf,
     pub files: Vec<FileEntry>,
@@ -35,7 +37,7 @@ pub struct WorkspaceTree {
     pub extensions: Vec<(String, usize)>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct DirNode {
     pub dirs: BTreeMap<String, DirNode>,
     pub files: Vec<usize>,
@@ -124,12 +126,13 @@ pub fn extension_of(rel_path: &str) -> String {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct PathFilter {
     include: Vec<Term>,
     exclude: Vec<Term>,
 }
 
+#[derive(Debug)]
 enum Term {
     Substring(String),
     NameGlob(String),
@@ -226,6 +229,7 @@ fn has_binary_extension(rel_path: &str) -> bool {
     BINARY_EXTS.contains(&extension_of(rel_path).as_str())
 }
 
+#[derive(Debug)]
 pub struct PackedContext {
     pub text: String,
     pub included: usize,
@@ -233,7 +237,7 @@ pub struct PackedContext {
     pub secret_hits: Vec<SecretHit>,
 }
 
-pub fn pack_context(root: &Path, selected: &[String], include_tree: bool) -> PackedContext {
+pub fn pack_context(root: &Path, selected: &[String]) -> PackedContext {
     let root_name = root
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -242,16 +246,12 @@ pub fn pack_context(root: &Path, selected: &[String], include_tree: bool) -> Pac
     let mut ordered: Vec<&String> = selected.iter().collect();
     ordered.sort();
 
-    let mut text = format!("# Repository context: {root_name}\n\n");
-    if include_tree {
-        text.push_str("## Selected files\n\n```\n");
-        for rel_path in &ordered {
-            text.push_str(rel_path);
-            text.push('\n');
-        }
-        text.push_str("```\n\n");
+    let mut text = format!("# Repository context: {root_name}\n\n## Selected files\n\n```\n");
+    for rel_path in &ordered {
+        text.push_str(rel_path);
+        text.push('\n');
     }
-    text.push_str("## File contents\n\n");
+    text.push_str("```\n\n## File contents\n\n");
 
     let mut included = 0;
     let mut missing = Vec::new();
@@ -265,10 +265,11 @@ pub fn pack_context(root: &Path, selected: &[String], include_tree: bool) -> Pac
         };
         secret_hits.extend(scan_secrets(rel_path, &content));
         let fence = fence_for(&content);
-        text.push_str(&format!(
+        let _ = write!(
+            text,
             "### {rel_path}\n\n{fence}{lang}\n{content}\n{fence}\n\n",
             lang = language_hint(rel_path),
-        ));
+        );
         included += 1;
     }
 
@@ -316,7 +317,7 @@ fn language_hint(rel_path: &str) -> &'static str {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SecretHit {
     pub rel_path: String,
     pub line: usize,

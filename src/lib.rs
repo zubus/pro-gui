@@ -23,10 +23,7 @@ pub fn run() -> eframe::Result<()> {
         "Pro GUI",
         options,
         Box::new(|cc| {
-            let app = ProGuiApp::new(cc).map_err(|err| {
-                Box::new(std::io::Error::other(err.to_string()))
-                    as Box<dyn std::error::Error + Send + Sync>
-            })?;
+            let app = ProGuiApp::new(cc)?;
             Ok(Box::new(app))
         }),
     )
