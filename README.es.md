@@ -21,7 +21,7 @@ Funciona solo con tus propias API keys. Los chats, la configuración y las keys 
 
 ## Primeros pasos
 
-Necesitas Rust 1.85 o superior, que puedes instalar con [rustup](https://rustup.rs).
+Necesitas Rust 1.88 o superior, que puedes instalar con [rustup](https://rustup.rs).
 
 ```sh
 git clone https://github.com/zubus/pro-gui.git
