@@ -232,8 +232,8 @@ impl ProGuiApp {
             }
             HeaderAction::BackupDatabase => {
                 self.banner = Some(match backup_database_file(&self.db) {
-                    Ok(path) => format!("Backup written to {path}"),
-                    Err(err) => format!("Backup failed: {err}"),
+                    Ok(path) => format!("Backup written to {}", path.display()),
+                    Err(err) => format!("Backup failed: {err:#}"),
                 });
                 return;
             }
@@ -260,23 +260,14 @@ impl ProGuiApp {
             HeaderAction::ExportMarkdown => {
                 let content = conversation_markdown(conversation);
                 let slug = slugify_title(&conversation.title);
-                self.banner = Some(match write_export_file(&slug, "md", &content) {
-                    Ok(path) => format!("Exported to {path}"),
-                    Err(err) => format!("Export failed: {err}"),
-                });
+                self.banner = Some(export_banner(write_export_file(&slug, "md", &content)));
             }
-            HeaderAction::ExportJson => match conversation_json(conversation) {
-                Ok(content) => {
-                    let slug = slugify_title(&conversation.title);
-                    self.banner = Some(match write_export_file(&slug, "json", &content) {
-                        Ok(path) => format!("Exported to {path}"),
-                        Err(err) => format!("Export failed: {err}"),
-                    });
-                }
-                Err(err) => {
-                    self.banner = Some(format!("Export failed: {err}"));
-                }
-            },
+            HeaderAction::ExportJson => {
+                let slug = slugify_title(&conversation.title);
+                let written = conversation_json(conversation)
+                    .and_then(|content| write_export_file(&slug, "json", &content));
+                self.banner = Some(export_banner(written));
+            }
             HeaderAction::OpenShortcuts
             | HeaderAction::ExportAllJson
             | HeaderAction::BackupDatabase => {}

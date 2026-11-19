@@ -131,7 +131,7 @@ pub struct ProGuiApp {
     answer_cache: HashMap<i64, CachedAnswerBlocks>,
     turn_heights: HashMap<i64, (u64, f32)>,
     persisted_at: HashMap<i64, Instant>,
-    export_job: Option<Receiver<Result<String, String>>>,
+    export_job: Option<Receiver<Result<PathBuf>>>,
     image_tx: Sender<ImageResult>,
     image_rx: Receiver<ImageResult>,
     applied_font_size: f32,

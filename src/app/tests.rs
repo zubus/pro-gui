@@ -697,6 +697,24 @@ fn exporting_all_chats_streams_valid_json_with_every_turn() {
 }
 
 #[test]
+fn a_failed_export_names_the_file_it_could_not_write() {
+    let dir = std::env::temp_dir().join(format!("pro-gui-export-fail-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db_path = dir.join("source.sqlite3");
+    drop(Database::open(&db_path).unwrap());
+
+    let result = export_all_chats(&db_path, &dir.join("missing-folder"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let banner = export_banner(result);
+    assert!(
+        banner.starts_with("Export failed: could not create "),
+        "{banner}"
+    );
+    assert!(banner.contains("missing-folder"), "{banner}");
+}
+
+#[test]
 fn history_keeps_pasted_blocks_but_not_the_repository_context() {
     let blocks = vec![
         PromptBlock::new(

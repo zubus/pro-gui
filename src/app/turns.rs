@@ -692,10 +692,7 @@ impl ProGuiApp {
     pub(super) fn process_events(&mut self) {
         if let Some(result) = self.export_job.as_ref().and_then(|job| job.try_recv().ok()) {
             self.export_job = None;
-            self.banner = Some(match result {
-                Ok(path) => format!("Exported to {path}"),
-                Err(err) => format!("Export failed: {err}"),
-            });
+            self.banner = Some(export_banner(result));
         }
         while let Ok(tagged) = self.rx.try_recv() {
             if !tagged.is_current() {
