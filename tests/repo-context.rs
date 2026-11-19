@@ -34,6 +34,67 @@ fn secret_scan_finds_keys() {
 }
 
 #[test]
+fn every_secret_pattern_finds_its_kind() {
+    let samples = [
+        ("OpenAI-style API key", format!("sk-{}", "a".repeat(24))),
+        ("GitHub token", format!("ghp_{}", "a".repeat(36))),
+        ("AWS access key id", format!("AKIA{}", "A".repeat(16))),
+        ("Slack token", format!("xoxb-{}", "1".repeat(12))),
+        ("Google API key", format!("AIza{}", "a".repeat(35))),
+        (
+            "private key block",
+            format!("-----BEGIN {}PRIVATE KEY-----", "RSA "),
+        ),
+    ];
+    for (kind, sample) in samples {
+        let hits = scan_secrets("config.txt", &format!("value = {sample}\n"));
+        assert_eq!(hits.len(), 1, "{kind} sample gave {} hits", hits.len());
+        assert_eq!(hits[0].kind, kind);
+    }
+}
+
+#[test]
+fn a_star_in_the_path_does_not_break_a_glob() {
+    for (query, path) in [
+        ("*", "notes/*draft.md"),
+        ("*.md", "notes/*draft.md"),
+        ("a*", "a*b"),
+        ("docs/*", "docs/*.txt"),
+    ] {
+        assert!(
+            PathFilter::parse(query).matches(path),
+            "{query} should match {path}"
+        );
+    }
+}
+
+#[test]
+fn only_a_real_extension_marks_a_file_as_binary() {
+    let root = std::env::temp_dir().join(format!("pro-gui-scan-{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("temp dir is writable");
+    for name in ["bin", "db", "photo.PNG", "Main.RS"] {
+        std::fs::write(root.join(name), "fn main() {}\n").expect("temp file is writable");
+    }
+    let tree = scan_workspace(&root);
+    let packed = pack_context(&root, &["Main.RS".to_owned()], true);
+    let _ = std::fs::remove_dir_all(&root);
+
+    let skip_reason = |rel_path: &str| {
+        tree.files
+            .iter()
+            .find(|file| file.rel_path == rel_path)
+            .map(|file| file.skip_reason)
+    };
+    assert_eq!(skip_reason("bin"), Some(None));
+    assert_eq!(skip_reason("db"), Some(None));
+    assert_eq!(skip_reason("photo.PNG"), Some(Some("binary")));
+    assert!(
+        packed.text.contains("```rust\n"),
+        "an upper-case .RS file should get the rust fence"
+    );
+}
+
+#[test]
 fn filter_terms_combine() {
     let paths = [
         "app/api/views.py",
