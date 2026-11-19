@@ -52,6 +52,13 @@ impl Conversation {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockRange {
+    pub label: String,
+    pub start: usize,
+    pub end: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct PromptBlock {
     pub label: String,

@@ -957,12 +957,12 @@ pub(super) fn anthropic_history(
 
 pub(super) fn history_text(turn: &Turn, ranges: &HashMap<i64, Vec<BlockRange>>) -> String {
     let mut text = String::new();
-    for (label, start, end) in ranges.get(&turn.id).into_iter().flatten() {
-        if label == REPOSITORY_CONTEXT_LABEL {
+    for range in ranges.get(&turn.id).into_iter().flatten() {
+        if range.label == REPOSITORY_CONTEXT_LABEL {
             continue;
         }
-        if let Some(body) = turn.prompt_text.get(*start..*end) {
-            let _ = write!(text, "## {label}\n\n{}\n\n", body.trim_end());
+        if let Some(body) = turn.prompt_text.get(range.start..range.end) {
+            let _ = write!(text, "## {}\n\n{}\n\n", range.label, body.trim_end());
         }
     }
     text.push_str(split_prompt(turn).1.trim());

@@ -137,6 +137,32 @@ fn a_turn_loads_back_with_its_id_and_flags() {
 }
 
 #[test]
+fn turn_blocks_load_back_in_their_order() {
+    let temp = TempDatabase::new("blocks");
+    let db = temp.open();
+    let chat = db.create_conversation("Chat", None).unwrap();
+    let turn = db.insert_turn(&new_turn(chat, "question")).unwrap();
+    let blocks = vec![
+        BlockRange {
+            label: "notes".to_owned(),
+            start: 19,
+            end: 24,
+        },
+        BlockRange {
+            label: "crash log".to_owned(),
+            start: 3,
+            end: 9,
+        },
+    ];
+
+    db.replace_turn_blocks(turn.id, &blocks).unwrap();
+    assert_eq!(db.load_turn_blocks(turn.id).unwrap(), blocks);
+
+    db.replace_turn_blocks(turn.id, &blocks[1..]).unwrap();
+    assert_eq!(db.load_turn_blocks(turn.id).unwrap(), &blocks[1..]);
+}
+
+#[test]
 fn deleting_a_folder_keeps_its_chats() {
     let temp = TempDatabase::new("folders");
     let db = temp.open();

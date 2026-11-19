@@ -17,8 +17,8 @@ use crate::context as repoctx;
 use crate::db::Database;
 use crate::docedit::DocumentEditor;
 use crate::models::{
-    AttachmentMeta, Conversation, Folder, HistoryMessage, HistoryRole, NewTurn, PromptBlock,
-    RequestSpec, Turn, TurnSnapshot, WorkerEvent, format_compact_count, now_string,
+    AttachmentMeta, BlockRange, Conversation, Folder, HistoryMessage, HistoryRole, NewTurn,
+    PromptBlock, RequestSpec, Turn, TurnSnapshot, WorkerEvent, format_compact_count, now_string,
     title_from_prompt,
 };
 use crate::providers::{self, AttemptEvent, Provider, openai};
@@ -43,8 +43,6 @@ use export::*;
 use markdown::*;
 use theme::*;
 use turns::*;
-
-type BlockRange = (String, usize, usize);
 
 const PACKED_CONTEXT_SEPARATOR: &str = "---\n\nUser request:\n\n";
 

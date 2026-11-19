@@ -837,7 +837,11 @@ pub(super) fn assemble_blocks(
         let _ = write!(prompt, "## Block {}: {}\n\n", index + 1, block.label);
         let start = prompt.len();
         prompt.push_str(&block.text);
-        ranges.push((block.label.clone(), start, prompt.len()));
+        ranges.push(BlockRange {
+            label: block.label.clone(),
+            start,
+            end: prompt.len(),
+        });
         prompt.push_str("\n\n");
     }
     if !prompt.is_empty() {
@@ -852,13 +856,10 @@ pub(super) fn blocks_of_turn(turn: &Turn, ranges: &[BlockRange]) -> Vec<PromptBl
     let text = turn.prompt_text.as_str();
     let recovered: Vec<PromptBlock> = ranges
         .iter()
-        .filter(|(_, start, end)| {
-            start <= end
-                && *end <= text.len()
-                && text.is_char_boundary(*start)
-                && text.is_char_boundary(*end)
+        .filter_map(|range| {
+            let body = text.get(range.start..range.end)?;
+            Some(PromptBlock::new(range.label.clone(), body.to_owned()))
         })
-        .map(|(label, start, end)| PromptBlock::new(label.clone(), text[*start..*end].to_owned()))
         .collect();
     if !recovered.is_empty() {
         return recovered;
