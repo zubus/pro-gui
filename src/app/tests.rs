@@ -696,6 +696,13 @@ fn exporting_all_chats_streams_valid_json_with_every_turn() {
 }
 
 #[test]
+fn a_time_stamp_shows_month_day_and_minute_without_a_panic() {
+    assert_eq!(relative_time("2026-11-18 21:45:10"), "11-18 21:45");
+    assert_eq!(relative_time("2026-11-18"), "2026-11-18");
+    assert_eq!(relative_time("éééééééé"), "éééééééé");
+}
+
+#[test]
 fn a_missing_attachment_fails_the_load_instead_of_being_dropped() {
     let dir = std::env::temp_dir().join(format!("pro-gui-attachments-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

@@ -903,10 +903,7 @@ fn database_path() -> PathBuf {
 }
 
 fn relative_time(value: &str) -> String {
-    if value.len() >= 16 {
-        return value[5..16].to_owned();
-    }
-    value.to_owned()
+    value.get(5..16).unwrap_or(value).to_owned()
 }
 
 fn truncate_text(value: &str, max_chars: usize) -> String {
