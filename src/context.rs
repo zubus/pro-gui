@@ -233,7 +233,7 @@ pub struct PackedContext {
     pub secret_hits: Vec<SecretHit>,
 }
 
-pub fn pack_context(root: &Path, selected: &[String], include_tree: bool) -> PackedContext {
+pub fn pack_context(root: &Path, selected: &[String]) -> PackedContext {
     let root_name = root
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -242,16 +242,12 @@ pub fn pack_context(root: &Path, selected: &[String], include_tree: bool) -> Pac
     let mut ordered: Vec<&String> = selected.iter().collect();
     ordered.sort();
 
-    let mut text = format!("# Repository context: {root_name}\n\n");
-    if include_tree {
-        text.push_str("## Selected files\n\n```\n");
-        for rel_path in &ordered {
-            text.push_str(rel_path);
-            text.push('\n');
-        }
-        text.push_str("```\n\n");
+    let mut text = format!("# Repository context: {root_name}\n\n## Selected files\n\n```\n");
+    for rel_path in &ordered {
+        text.push_str(rel_path);
+        text.push('\n');
     }
-    text.push_str("## File contents\n\n");
+    text.push_str("```\n\n## File contents\n\n");
 
     let mut included = 0;
     let mut missing = Vec::new();

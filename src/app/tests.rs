@@ -313,7 +313,6 @@ fn turns_stored_before_the_prefix_existed_fall_back_to_the_marker() {
     let packed = repoctx::pack_context(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
         &["Cargo.toml".to_owned()],
-        true,
     );
     let stored = format!(
         "{}{PACKED_CONTEXT_SEPARATOR}Explain this file.",

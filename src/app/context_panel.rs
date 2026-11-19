@@ -619,7 +619,7 @@ impl ProGuiApp {
                 .selected_conversation()
                 .map(|conversation| conversation.context_selection.clone())
                 .unwrap_or_default();
-            let packed = repoctx::pack_context(&PathBuf::from(&workspace), &selected, true);
+            let packed = repoctx::pack_context(&PathBuf::from(&workspace), &selected);
             ctx.copy_text(packed.text);
             self.banner = Some(format!(
                 "Copied {} file(s) of context to the clipboard (\u{2248}{} tokens).",

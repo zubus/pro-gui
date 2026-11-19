@@ -204,7 +204,7 @@ impl ProGuiApp {
         let context_source = context_source.filter(|_| !self.skip_context_once);
         self.skip_context_once = false;
         if let Some((root, context_selection)) = context_source {
-            let packed = repoctx::pack_context(&root, &context_selection, true);
+            let packed = repoctx::pack_context(&root, &context_selection);
             let already_in_chain = packed.included > 0
                 && chained_parent.is_some_and(|parent| {
                     self.conversations

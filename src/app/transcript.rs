@@ -101,8 +101,7 @@ impl ProGuiApp {
                         }
                         match editing.as_mut().filter(|edit| edit.turn_id == turn.id) {
                             Some(edit) => {
-                                if let Some(edit_action) =
-                                    render_turn_editor(ui, turn.id, edit, turns_below)
+                                if let Some(edit_action) = render_turn_editor(ui, edit, turns_below)
                                 {
                                     action = Some(edit_action);
                                 }
@@ -428,7 +427,6 @@ impl ProGuiApp {
         let editing = &mut self.editing_turn;
         let mut turn_action = None;
         let mut scrolled_to_in_chat_match = false;
-        let mut has_in_chat_scroll_target = false;
         let mut painted_matches = 0;
 
         CentralPanel::default()
@@ -445,14 +443,9 @@ impl ProGuiApp {
                     ui.label("No chat selected.");
                     return;
                 };
-                let current_match_index = if is_search_active(&in_chat_search)
-                    && in_chat_match_count > 0
-                {
-                    has_in_chat_scroll_target = true;
-                    Some(in_chat_search_current.min(in_chat_match_count - 1))
-                } else {
-                    None
-                };
+                let current_match_index = (is_search_active(&in_chat_search)
+                    && in_chat_match_count > 0)
+                    .then(|| in_chat_search_current.min(in_chat_match_count - 1));
                 let mut search_render = InChatSearchRender::new(
                     &in_chat_search,
                     current_match_index,
@@ -558,7 +551,6 @@ impl ProGuiApp {
         if scrolled_to_in_chat_match || !is_search_active(&self.in_chat_search) {
             self.scroll_to_in_chat_match = false;
         }
-        let _ = has_in_chat_scroll_target;
 
         if let Some(action) = turn_action {
             match action {
@@ -692,7 +684,6 @@ pub(super) fn render_user_prompt(
 
 pub(super) fn render_turn_editor(
     ui: &mut egui::Ui,
-    turn_id: i64,
     edit: &mut TurnEdit,
     turns_below: usize,
 ) -> Option<TurnAction> {
@@ -704,8 +695,6 @@ pub(super) fn render_turn_editor(
         editor,
         ..
     } = edit;
-
-    let _ = turn_id;
 
     if !blocks.is_empty() {
         if let Some(clicked) = render_block_chips(ui, blocks) {
