@@ -21,7 +21,7 @@ It works only with your own API keys. Chats, settings and keys stay in a local S
 
 ## Getting started
 
-You need Rust 1.85 or newer, which you can install with [rustup](https://rustup.rs).
+You need Rust 1.88 or newer, which you can install with [rustup](https://rustup.rs).
 
 ```sh
 git clone https://github.com/zubus/pro-gui.git

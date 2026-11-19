@@ -229,7 +229,7 @@ fn a_replay_never_shrinks_the_text_on_screen() {
     let (tx, rx) = mpsc::channel();
     let mut live = LiveRun::new(1, "v1_xxx", "in_progress");
     live.shown = (0, 20);
-    live.last_snapshot = Instant::now() - Duration::from_secs(60);
+    live.last_snapshot = None;
     live.apply(&json!({
         "event_type": "step.start", "index": 1,
         "step": { "type": "model_output", "content": [{ "type": "text", "text": "short" }] }

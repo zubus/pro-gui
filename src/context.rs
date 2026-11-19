@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -199,12 +199,12 @@ fn glob_match(pattern: &[u8], text: &[u8]) -> bool {
     let (mut p, mut t) = (0, 0);
     let mut star: Option<(usize, usize)> = None;
     while t < text.len() {
-        if p < pattern.len() && (pattern[p] == b'?' || pattern[p] == text[t]) {
-            p += 1;
-            t += 1;
-        } else if p < pattern.len() && pattern[p] == b'*' {
+        if p < pattern.len() && pattern[p] == b'*' {
             star = Some((p, t));
             p += 1;
+        } else if p < pattern.len() && (pattern[p] == b'?' || pattern[p] == text[t]) {
+            p += 1;
+            t += 1;
         } else if let Some((star_p, star_t)) = star {
             p = star_p + 1;
             t = star_t + 1;
@@ -223,11 +223,7 @@ fn has_binary_extension(rel_path: &str) -> bool {
         "jar", "war", "bin", "dat", "sqlite3", "db", "wasm", "ttf", "otf", "woff", "woff2", "mp3",
         "mp4", "mov", "avi", "webm", "ogg", "wav", "heic",
     ];
-    rel_path
-        .rsplit('.')
-        .next()
-        .map(|ext| BINARY_EXTS.contains(&ext.to_lowercase().as_str()))
-        .unwrap_or(false)
+    BINARY_EXTS.contains(&extension_of(rel_path).as_str())
 }
 
 pub struct PackedContext {
@@ -295,7 +291,7 @@ fn fence_for(content: &str) -> &'static str {
 }
 
 fn language_hint(rel_path: &str) -> &'static str {
-    match rel_path.rsplit('.').next().unwrap_or("") {
+    match extension_of(rel_path).as_str() {
         "rs" => "rust",
         "ts" | "tsx" => "ts",
         "js" | "jsx" | "mjs" => "js",
@@ -343,17 +339,20 @@ fn secret_patterns() -> &'static [(Regex, &'static str)] {
             (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "private key block"),
         ]
         .into_iter()
-        .filter_map(|(pattern, kind)| Regex::new(pattern).ok().map(|regex| (regex, kind)))
+        .map(|(pattern, kind)| {
+            let regex = Regex::new(pattern)
+                .unwrap_or_else(|err| panic!("secret pattern {pattern:?} is invalid: {err}"));
+            (regex, kind)
+        })
         .collect()
     })
 }
 
 pub fn scan_secrets(rel_path: &str, content: &str) -> Vec<SecretHit> {
     let mut hits = Vec::new();
-    let mut seen_lines = HashSet::new();
     for (line_index, line) in content.lines().enumerate() {
         for (regex, kind) in secret_patterns() {
-            if regex.is_match(line) && seen_lines.insert((line_index, *kind)) {
+            if regex.is_match(line) {
                 hits.push(SecretHit {
                     rel_path: rel_path.to_owned(),
                     line: line_index + 1,

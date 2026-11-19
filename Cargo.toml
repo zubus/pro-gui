@@ -2,7 +2,7 @@
 name = "pro-gui"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Rust desktop client for long-running LLM reasoning with OpenAI, Gemini and Claude"
 license = "MIT"
 repository = "https://github.com/zubus/pro-gui"

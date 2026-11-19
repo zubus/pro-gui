@@ -1,11 +1,13 @@
+use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use serde_json::json;
 
 use super::http::{self, RequestError};
+use super::{ended_snapshot, is_terminal_status};
 use crate::models::{ModelOption, RequestSpec, TurnSnapshot, WorkerEvent};
 
 const ASTRA_MODEL: &str = "gpt-6-astra";
@@ -137,27 +139,32 @@ pub fn store_responses() -> bool {
     STORE
 }
 
-pub fn spawn_new_turn(
-    tx: std::sync::mpsc::Sender<WorkerEvent>,
-    turn_id: i64,
-    spec: RequestSpec,
-    api_key: String,
-) {
-    thread::spawn(move || run_new_turn(tx, turn_id, spec, api_key));
+pub fn spawn_new_turn(tx: Sender<WorkerEvent>, turn_id: i64, spec: RequestSpec, api_key: String) {
+    thread::spawn(move || run_new_turn(&tx, turn_id, &spec, &api_key));
 }
 
 pub fn spawn_resume_turn(
-    tx: std::sync::mpsc::Sender<WorkerEvent>,
+    tx: Sender<WorkerEvent>,
     turn_id: i64,
     response_id: String,
     requested_model: String,
     api_key: String,
 ) {
-    thread::spawn(move || run_poll_only(tx, turn_id, response_id, requested_model, api_key));
+    thread::spawn(move || {
+        let client = http::build_client();
+        run_poll_loop(
+            &tx,
+            turn_id,
+            &client,
+            &response_id,
+            &api_key,
+            &requested_model,
+        );
+    });
 }
 
 pub fn spawn_cancel_turn(
-    tx: std::sync::mpsc::Sender<WorkerEvent>,
+    tx: Sender<WorkerEvent>,
     turn_id: i64,
     response_id: String,
     requested_model: String,
@@ -191,19 +198,14 @@ pub fn spawn_cancel_turn(
     });
 }
 
-fn run_new_turn(
-    tx: std::sync::mpsc::Sender<WorkerEvent>,
-    turn_id: i64,
-    spec: RequestSpec,
-    api_key: String,
-) {
+fn run_new_turn(tx: &Sender<WorkerEvent>, turn_id: i64, spec: &RequestSpec, api_key: &str) {
     let client = http::build_client();
     let Some(api_response) = super::create_with_retry(
-        &tx,
+        tx,
         turn_id,
         "OpenAI",
         "Submitting background request...",
-        || create_response(&client, &api_key, &spec),
+        || create_response(&client, api_key, spec),
     ) else {
         return;
     };
@@ -219,47 +221,29 @@ fn run_new_turn(
                 turn_id,
                 response_id.clone(),
                 spec.model.clone(),
-                api_key.clone(),
+                api_key.to_owned(),
             );
         }
-        run_poll_loop(tx, turn_id, &client, response_id, &api_key, &spec.model);
+        run_poll_loop(tx, turn_id, &client, &response_id, api_key, &spec.model);
     }
 }
 
-fn run_poll_only(
-    tx: std::sync::mpsc::Sender<WorkerEvent>,
-    turn_id: i64,
-    response_id: String,
-    requested_model: String,
-    api_key: String,
-) {
-    let client = http::build_client();
-    run_poll_loop(
-        tx,
-        turn_id,
-        &client,
-        response_id,
-        &api_key,
-        &requested_model,
-    );
-}
-
 fn run_poll_loop(
-    tx: std::sync::mpsc::Sender<WorkerEvent>,
+    tx: &Sender<WorkerEvent>,
     turn_id: i64,
     client: &Client,
-    response_id: String,
+    response_id: &str,
     api_key: &str,
     requested_model: &str,
 ) {
     let mut backoff = Duration::from_secs(2);
-    let started = std::time::Instant::now();
+    let started = Instant::now();
     let mut last_sent: Option<TurnSnapshot> = None;
 
     loop {
         thread::sleep(poll_interval(started.elapsed()));
 
-        match retrieve_response(client, api_key, &response_id) {
+        match retrieve_response(client, api_key, response_id) {
             Ok(api_response) => {
                 backoff = Duration::from_secs(2);
                 let snapshot = snapshot_from_response(turn_id, api_response, requested_model);
@@ -286,16 +270,8 @@ fn run_poll_loop(
             }
             Err(err) => {
                 let _ = tx.send(WorkerEvent::Snapshot(TurnSnapshot {
-                    turn_id,
-                    response_id: Some(response_id.clone()),
-                    model: None,
-                    status: "failed".to_owned(),
-                    thinking_text: String::new(),
-                    answer_text: String::new(),
-                    error_text: Some(err.message),
-                    input_tokens: None,
-                    output_tokens: None,
-                    reasoning_tokens: None,
+                    response_id: Some(response_id.to_owned()),
+                    ..ended_snapshot(turn_id, "failed", err.message)
                 }));
                 break;
             }
@@ -441,16 +417,12 @@ fn snapshot_from_response(
         model: stored_model_id(requested_model, response.model),
         status: response.status.unwrap_or_else(|| "unknown".to_owned()),
         thinking_text: thinking_parts.join("\n\n"),
-        answer_text: answer_parts.join(""),
+        answer_text: answer_parts.concat(),
         error_text: response.error.and_then(|error| error.message),
         input_tokens,
         output_tokens,
         reasoning_tokens,
     }
-}
-
-fn is_terminal_status(status: &str) -> bool {
-    !matches!(status, "queued" | "in_progress")
 }
 
 fn clamp_max_output_tokens(value: i64) -> i64 {

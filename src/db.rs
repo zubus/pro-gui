@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use rusqlite::{Connection, params};
 
 use crate::models::{
@@ -308,11 +308,11 @@ impl Database {
         Ok(())
     }
 
-    pub fn path(&self) -> Option<std::path::PathBuf> {
+    pub fn path(&self) -> Option<PathBuf> {
         self.conn
             .path()
             .filter(|path| !path.is_empty())
-            .map(std::path::PathBuf::from)
+            .map(PathBuf::from)
     }
 
     pub fn open_reader(path: &Path) -> Result<Self> {
@@ -370,10 +370,10 @@ impl Database {
     }
 
     pub fn backup_to(&self, target: &Path) -> Result<()> {
-        self.conn.execute(
-            "VACUUM INTO ?",
-            params![target.to_string_lossy().into_owned()],
-        )?;
+        let target = target
+            .to_str()
+            .with_context(|| format!("backup path {} is not UTF-8", target.display()))?;
+        self.conn.execute("VACUUM INTO ?", params![target])?;
         Ok(())
     }
 
@@ -485,8 +485,8 @@ impl Database {
                     reasoning_effort: row.get(6)?,
                     reasoning_summary: row.get(7)?,
                     service_tier: row.get(8)?,
-                    background: row.get::<_, i64>(9)? != 0,
-                    store: row.get::<_, i64>(10)? != 0,
+                    background: row.get(9)?,
+                    store: row.get(10)?,
                     response_id: row.get(11)?,
                     parent_response_id: row.get(12)?,
                     status: row.get(13)?,
@@ -677,13 +677,15 @@ impl Database {
     }
 
     pub fn delete_folder(&self, folder_id: i64) -> Result<()> {
-        self.conn.execute(
-            "UPDATE conversations SET folder_id = NULL WHERE folder_id = ?",
-            params![folder_id],
-        )?;
-        self.conn
-            .execute("DELETE FROM folders WHERE id = ?", params![folder_id])?;
-        Ok(())
+        self.atomically(|db| {
+            db.conn.execute(
+                "UPDATE conversations SET folder_id = NULL WHERE folder_id = ?",
+                params![folder_id],
+            )?;
+            db.conn
+                .execute("DELETE FROM folders WHERE id = ?", params![folder_id])?;
+            Ok(())
+        })
     }
 
     pub fn set_conversation_folder(
@@ -836,8 +838,8 @@ impl Database {
                 turn.reasoning_effort,
                 turn.reasoning_summary,
                 turn.service_tier,
-                bool_to_sql(turn.background),
-                bool_to_sql(turn.store),
+                turn.background,
+                turn.store,
                 turn.parent_response_id,
                 now,
                 now,
@@ -845,6 +847,7 @@ impl Database {
                 turn.prompt_prefix_len as i64
             ],
         )?;
+        let id = self.conn.last_insert_rowid();
 
         self.conn.execute(
             "
@@ -856,7 +859,7 @@ impl Database {
         )?;
 
         Ok(Turn {
-            id: self.conn.last_insert_rowid(),
+            id,
             prompt_text: turn.prompt_text.clone(),
             attachments: Vec::new(),
             thinking_text: String::new(),
@@ -1080,10 +1083,6 @@ fn parse_bool_setting(value: &str) -> bool {
 
 fn clamp_max_output_tokens(value: i64) -> i64 {
     value.clamp(1_024, providers::MAX_OUTPUT_TOKENS)
-}
-
-fn bool_to_sql(value: bool) -> i64 {
-    if value { 1 } else { 0 }
 }
 
 fn add_column_if_missing(

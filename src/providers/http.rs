@@ -4,12 +4,12 @@ use std::time::{Duration, Instant};
 
 use reqwest::StatusCode;
 use reqwest::blocking::{Client, Response};
-use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 const GLOBAL_MIN_REQUEST_GAP: Duration = Duration::from_millis(350);
 
-static GLOBAL_THROTTLE: OnceLock<Mutex<Instant>> = OnceLock::new();
+static LAST_REQUEST_AT: Mutex<Option<Instant>> = Mutex::new(None);
 
 #[derive(Debug)]
 pub struct RequestError {
@@ -40,7 +40,7 @@ pub fn stream_client() -> Client {
     shared_client(&STREAM_CLIENT, Duration::from_secs(5 * 60))
 }
 
-pub fn parse_json<T: for<'de> Deserialize<'de>>(response: Response) -> Result<T, RequestError> {
+pub fn parse_json<T: DeserializeOwned>(response: Response) -> Result<T, RequestError> {
     let status = response.status();
     let body = response.text().map_err(|err| RequestError {
         message: format!("Failed to read API response: {err}"),
@@ -71,14 +71,14 @@ pub fn status_error(status: StatusCode, body: &str) -> RequestError {
 }
 
 fn is_out_of_quota(body: &str) -> bool {
-    serde_json::from_str::<Value>(body)
-        .ok()
-        .and_then(|value| value.get("error").cloned())
-        .is_some_and(|error| {
-            ["code", "type"]
-                .iter()
-                .any(|field| error.get(field).and_then(Value::as_str) == Some("insufficient_quota"))
-        })
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return false;
+    };
+    value.get("error").is_some_and(|error| {
+        ["code", "type"]
+            .iter()
+            .any(|field| error.get(field).and_then(Value::as_str) == Some("insufficient_quota"))
+    })
 }
 
 fn parse_api_error(body: &str) -> Option<String> {
@@ -101,12 +101,14 @@ pub fn classify_transport_error(err: reqwest::Error) -> RequestError {
 }
 
 pub fn throttle() {
-    let mutex = GLOBAL_THROTTLE.get_or_init(|| Mutex::new(Instant::now() - GLOBAL_MIN_REQUEST_GAP));
-    let mut last = mutex.lock().expect("global throttle lock poisoned");
-    let now = Instant::now();
-    let earliest = *last + GLOBAL_MIN_REQUEST_GAP;
-    if earliest > now {
-        thread::sleep(earliest - now);
+    let mut last = LAST_REQUEST_AT
+        .lock()
+        .expect("global throttle lock poisoned");
+    if let Some(earliest) = last.map(|at| at + GLOBAL_MIN_REQUEST_GAP) {
+        let now = Instant::now();
+        if earliest > now {
+            thread::sleep(earliest - now);
+        }
     }
-    *last = Instant::now();
+    *last = Some(Instant::now());
 }

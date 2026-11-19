@@ -1,12 +1,13 @@
 use std::io::{BufRead, BufReader};
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use reqwest::blocking::Response;
 use serde_json::{Value, json};
 
 use super::http::{self, RequestError};
+use super::{NOTE_SPACING, ended_snapshot, send_note, snapshot_spacing, split_data_url};
 use crate::models::{ModelOption, RequestSpec, TurnSnapshot, WorkerEvent, format_compact_count};
 
 const FABLE_MODEL: &str = "claude-fable-5-2";
@@ -19,7 +20,6 @@ const OTHER_MODEL_MAX_OUTPUT_TOKENS: i64 = 64_000;
 const MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2026-10-21";
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
-const NOTE_SPACING: Duration = Duration::from_secs(1);
 
 const FABLE_LABEL: &str = "Claude Fable 5.2";
 
@@ -72,8 +72,9 @@ pub fn spawn_resume_turn(
     _api_key: String,
 ) {
     thread::spawn(move || {
-        let _ = tx.send(WorkerEvent::Snapshot(failed_snapshot(
+        let _ = tx.send(WorkerEvent::Snapshot(ended_snapshot(
             turn_id,
+            "failed",
             "Anthropic does not keep runs on its servers, so this run could not be resumed after the app restarted. Use Send again to retry.".to_owned(),
         )));
     });
@@ -193,10 +194,6 @@ fn request_body(spec: &RequestSpec) -> Value {
     body
 }
 
-fn split_data_url(url: &str) -> Option<(&str, &str)> {
-    url.strip_prefix("data:")?.split_once(";base64,")
-}
-
 enum StreamEnd {
     Finished,
     Cancelled,
@@ -298,7 +295,7 @@ struct LiveRun {
     shown: (usize, usize),
     shown_usage: Usage,
     shown_status: String,
-    last_snapshot: Instant,
+    last_snapshot: Option<Instant>,
     note: String,
     note_at: Option<Instant>,
 }
@@ -320,7 +317,7 @@ impl LiveRun {
             shown: (0, 0),
             shown_usage: Usage::default(),
             shown_status: "queued".to_owned(),
-            last_snapshot: Instant::now() - Duration::from_secs(60),
+            last_snapshot: None,
             note: String::new(),
             note_at: None,
         }
@@ -426,7 +423,8 @@ impl LiveRun {
 
     fn should_show(&self, lens: (usize, usize)) -> bool {
         let caught_up = lens.0 >= self.shown.0 && lens.1 >= self.shown.1;
-        let spaced = self.last_snapshot.elapsed() >= snapshot_spacing(lens.0 + lens.1);
+        let spacing = snapshot_spacing(lens.0 + lens.1);
+        let spaced = self.last_snapshot.is_none_or(|at| at.elapsed() >= spacing);
         caught_up
             && ((lens != self.shown && spaced)
                 || self.status != self.shown_status
@@ -437,7 +435,7 @@ impl LiveRun {
         self.shown = lens;
         self.shown_usage = self.usage;
         self.shown_status = snapshot.status.clone();
-        self.last_snapshot = Instant::now();
+        self.last_snapshot = Some(Instant::now());
         let _ = tx.send(WorkerEvent::Snapshot(snapshot));
         self.note.clear();
     }
@@ -613,32 +611,6 @@ impl Usage {
             format!(" {} tokens", counts.join(", "))
         }
     }
-}
-
-fn failed_snapshot(turn_id: i64, error_text: String) -> TurnSnapshot {
-    TurnSnapshot {
-        turn_id,
-        response_id: None,
-        model: None,
-        status: "failed".to_owned(),
-        thinking_text: String::new(),
-        answer_text: String::new(),
-        error_text: Some(error_text),
-        input_tokens: None,
-        output_tokens: None,
-        reasoning_tokens: None,
-    }
-}
-
-fn send_note(tx: &Sender<WorkerEvent>, turn_id: i64, message: impl Into<String>) {
-    let _ = tx.send(WorkerEvent::Note {
-        turn_id,
-        message: message.into(),
-    });
-}
-
-fn snapshot_spacing(text_len: usize) -> Duration {
-    Duration::from_millis((1_000 + text_len as u64 / 256).min(15_000))
 }
 
 #[cfg(test)]

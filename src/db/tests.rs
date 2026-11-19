@@ -117,6 +117,45 @@ fn opening_an_older_database_fills_in_the_chat_summaries() {
 }
 
 #[test]
+fn a_turn_loads_back_with_its_id_and_flags() {
+    let temp = TempDatabase::new("flags");
+    let db = temp.open();
+    let chat = db.create_conversation("Chat", None).unwrap();
+    let stored = db
+        .insert_turn(&NewTurn {
+            background: false,
+            store: true,
+            ..new_turn(chat, "question")
+        })
+        .unwrap();
+
+    let loaded = db.load_turns(chat).unwrap();
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].id, stored.id);
+    assert!(!loaded[0].background);
+    assert!(loaded[0].store);
+}
+
+#[test]
+fn deleting_a_folder_keeps_its_chats() {
+    let temp = TempDatabase::new("folders");
+    let db = temp.open();
+    let folder = db.create_folder("Work").unwrap();
+    let chat = db.create_conversation("Chat", Some(folder)).unwrap();
+
+    db.delete_folder(folder).unwrap();
+
+    assert!(db.load_folders().unwrap().is_empty());
+    let folder_of_chat = db
+        .load_conversation_summaries()
+        .unwrap()
+        .into_iter()
+        .find(|conversation| conversation.id == chat)
+        .map(|conversation| conversation.folder_id);
+    assert_eq!(folder_of_chat, Some(None));
+}
+
+#[test]
 fn a_failed_atomic_write_leaves_nothing_behind() {
     let temp = TempDatabase::new("atomic");
     let db = temp.open();
