@@ -9,7 +9,7 @@ use serde_json::Value;
 
 const GLOBAL_MIN_REQUEST_GAP: Duration = Duration::from_millis(350);
 
-static GLOBAL_THROTTLE: OnceLock<Mutex<Instant>> = OnceLock::new();
+static LAST_REQUEST_AT: Mutex<Option<Instant>> = Mutex::new(None);
 
 #[derive(Debug)]
 pub struct RequestError {
@@ -101,12 +101,14 @@ pub fn classify_transport_error(err: reqwest::Error) -> RequestError {
 }
 
 pub fn throttle() {
-    let mutex = GLOBAL_THROTTLE.get_or_init(|| Mutex::new(Instant::now() - GLOBAL_MIN_REQUEST_GAP));
-    let mut last = mutex.lock().expect("global throttle lock poisoned");
-    let now = Instant::now();
-    let earliest = *last + GLOBAL_MIN_REQUEST_GAP;
-    if earliest > now {
-        thread::sleep(earliest - now);
+    let mut last = LAST_REQUEST_AT
+        .lock()
+        .expect("global throttle lock poisoned");
+    if let Some(earliest) = last.map(|at| at + GLOBAL_MIN_REQUEST_GAP) {
+        let now = Instant::now();
+        if earliest > now {
+            thread::sleep(earliest - now);
+        }
     }
-    *last = Instant::now();
+    *last = Some(Instant::now());
 }

@@ -431,7 +431,7 @@ struct LiveRun {
     thought_len_at_usage: usize,
     preserved: (String, String),
     shown_status: String,
-    last_snapshot: Instant,
+    last_snapshot: Option<Instant>,
     note: String,
     note_at: Option<Instant>,
     polling: Option<String>,
@@ -464,7 +464,7 @@ impl LiveRun {
             thought_len_at_usage: 0,
             preserved: (String::new(), String::new()),
             shown_status: status.to_owned(),
-            last_snapshot: Instant::now() - Duration::from_secs(60),
+            last_snapshot: None,
             note: String::new(),
             note_at: None,
             polling: None,
@@ -655,7 +655,7 @@ impl LiveRun {
         } else {
             snapshot_spacing(lens.0 + lens.1)
         };
-        let spaced = self.last_snapshot.elapsed() >= spacing;
+        let spaced = self.last_snapshot.is_none_or(|at| at.elapsed() >= spacing);
         caught_up
             && ((lens != self.shown && spaced)
                 || status != self.shown_status
@@ -696,7 +696,7 @@ impl LiveRun {
         self.shown = lens;
         self.shown_usage = self.usage;
         self.shown_status = snapshot.status.clone();
-        self.last_snapshot = Instant::now();
+        self.last_snapshot = Some(Instant::now());
         let _ = tx.send(WorkerEvent::Snapshot(snapshot));
         self.note.clear();
     }

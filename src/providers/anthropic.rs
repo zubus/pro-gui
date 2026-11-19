@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader};
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use reqwest::blocking::Response;
 use serde_json::{Value, json};
@@ -295,7 +295,7 @@ struct LiveRun {
     shown: (usize, usize),
     shown_usage: Usage,
     shown_status: String,
-    last_snapshot: Instant,
+    last_snapshot: Option<Instant>,
     note: String,
     note_at: Option<Instant>,
 }
@@ -317,7 +317,7 @@ impl LiveRun {
             shown: (0, 0),
             shown_usage: Usage::default(),
             shown_status: "queued".to_owned(),
-            last_snapshot: Instant::now() - Duration::from_secs(60),
+            last_snapshot: None,
             note: String::new(),
             note_at: None,
         }
@@ -423,7 +423,8 @@ impl LiveRun {
 
     fn should_show(&self, lens: (usize, usize)) -> bool {
         let caught_up = lens.0 >= self.shown.0 && lens.1 >= self.shown.1;
-        let spaced = self.last_snapshot.elapsed() >= snapshot_spacing(lens.0 + lens.1);
+        let spacing = snapshot_spacing(lens.0 + lens.1);
+        let spaced = self.last_snapshot.is_none_or(|at| at.elapsed() >= spacing);
         caught_up
             && ((lens != self.shown && spaced)
                 || self.status != self.shown_status
@@ -434,7 +435,7 @@ impl LiveRun {
         self.shown = lens;
         self.shown_usage = self.usage;
         self.shown_status = snapshot.status.clone();
-        self.last_snapshot = Instant::now();
+        self.last_snapshot = Some(Instant::now());
         let _ = tx.send(WorkerEvent::Snapshot(snapshot));
         self.note.clear();
     }
