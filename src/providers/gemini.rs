@@ -9,6 +9,9 @@ use reqwest::header::CONTENT_LENGTH;
 use serde_json::{Value, json};
 
 use super::http::{self, RequestError};
+use super::{
+    NOTE_SPACING, ended_snapshot, is_terminal_status, send_note, snapshot_spacing, split_data_url,
+};
 use crate::models::{ModelOption, RequestSpec, TurnSnapshot, WorkerEvent, format_compact_count};
 
 const CARBON_MODEL: &str = "gemini-4-carbon";
@@ -23,7 +26,6 @@ const API_REVISION: &str = "2026-05-20";
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const MAX_EMPTY_STREAMS: u32 = 3;
-const NOTE_SPACING: Duration = Duration::from_secs(1);
 const MAX_BACKOFF_SECONDS: u64 = 30;
 
 const MODEL_OPTIONS: &[ModelOption] = &[
@@ -127,8 +129,9 @@ fn run_new_turn(tx: Sender<WorkerEvent>, turn_id: i64, spec: RequestSpec, api_ke
     if is_terminal_status(&created.status) {
         let _ = tx.send(WorkerEvent::Snapshot(created.into_snapshot(turn_id)));
     } else if created.id.is_empty() {
-        let _ = tx.send(WorkerEvent::Snapshot(failed_snapshot(
+        let _ = tx.send(WorkerEvent::Snapshot(ended_snapshot(
             turn_id,
+            "failed",
             "Gemini accepted the request but returned no interaction id to follow.".to_owned(),
         )));
     } else {
@@ -412,10 +415,6 @@ fn request_body(spec: &RequestSpec) -> Value {
         body["service_tier"] = json!("priority");
     }
     body
-}
-
-fn split_data_url(url: &str) -> Option<(&str, &str)> {
-    url.strip_prefix("data:")?.split_once(";base64,")
 }
 
 struct LiveRun {
@@ -1023,38 +1022,8 @@ fn final_error_text(status: &str, errors: &[String]) -> Option<String> {
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
-fn failed_snapshot(turn_id: i64, error_text: String) -> TurnSnapshot {
-    TurnSnapshot {
-        turn_id,
-        response_id: None,
-        model: None,
-        status: "failed".to_owned(),
-        thinking_text: String::new(),
-        answer_text: String::new(),
-        error_text: Some(error_text),
-        input_tokens: None,
-        output_tokens: None,
-        reasoning_tokens: None,
-    }
-}
-
-fn send_note(tx: &Sender<WorkerEvent>, turn_id: i64, message: impl Into<String>) {
-    let _ = tx.send(WorkerEvent::Note {
-        turn_id,
-        message: message.into(),
-    });
-}
-
-fn snapshot_spacing(text_len: usize) -> Duration {
-    Duration::from_millis((1_000 + text_len as u64 / 256).min(15_000))
-}
-
 fn next_backoff(backoff: Duration) -> Duration {
     Duration::from_secs((backoff.as_secs() * 2).min(MAX_BACKOFF_SECONDS))
-}
-
-fn is_terminal_status(status: &str) -> bool {
-    !matches!(status, "queued" | "in_progress")
 }
 
 #[cfg(test)]

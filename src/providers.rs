@@ -15,6 +15,8 @@ use http::RequestError;
 
 const MAX_CREATE_ATTEMPTS: u32 = 5;
 
+const NOTE_SPACING: Duration = Duration::from_secs(1);
+
 pub struct AttemptEvent {
     pub attempt: u64,
     pub event: WorkerEvent,
@@ -200,10 +202,11 @@ pub fn spawn_cancel_turn(
     };
     let tx = tagged_sender(out, attempt);
     let Some(response_id) = response_id else {
-        let _ = tx.send(WorkerEvent::Note {
+        send_note(
+            &tx,
             turn_id,
-            message: "Cancel requested, stopping before the run starts...".to_owned(),
-        });
+            "Cancel requested, stopping before the run starts...".to_owned(),
+        );
         return;
     };
     match Provider::of(&model) {
@@ -248,6 +251,22 @@ fn wait_unless_cancelled(turn_id: i64, delay: Duration) -> bool {
     }
 }
 
+fn send_note(tx: &Sender<WorkerEvent>, turn_id: i64, message: String) {
+    let _ = tx.send(WorkerEvent::Note { turn_id, message });
+}
+
+fn split_data_url(url: &str) -> Option<(&str, &str)> {
+    url.strip_prefix("data:")?.split_once(";base64,")
+}
+
+fn snapshot_spacing(text_len: usize) -> Duration {
+    Duration::from_millis((1_000 + text_len as u64 / 256).min(15_000))
+}
+
+fn is_terminal_status(status: &str) -> bool {
+    !matches!(status, "queued" | "in_progress")
+}
+
 fn ended_snapshot(turn_id: i64, status: &str, error_text: String) -> TurnSnapshot {
     TurnSnapshot {
         turn_id,
@@ -283,10 +302,7 @@ fn create_with_retry<T>(
             cancelled();
             return None;
         }
-        let _ = tx.send(WorkerEvent::Note {
-            turn_id,
-            message: note.to_owned(),
-        });
+        send_note(tx, turn_id, note.to_owned());
         let err = match create() {
             Ok(value) => return Some(value),
             Err(err) => err,
@@ -311,14 +327,15 @@ fn create_with_retry<T>(
             )));
             return None;
         }
-        let _ = tx.send(WorkerEvent::Note {
+        send_note(
+            tx,
             turn_id,
-            message: format!(
+            format!(
                 "Create failed: {}. Retrying in {}s (attempt {attempt} of {MAX_CREATE_ATTEMPTS}).",
                 err.message,
                 backoff.as_secs()
             ),
-        });
+        );
         if !wait_unless_cancelled(turn_id, backoff) {
             cancelled();
             return None;

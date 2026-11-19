@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use reqwest::StatusCode;
 use reqwest::blocking::{Client, Response};
-use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 const GLOBAL_MIN_REQUEST_GAP: Duration = Duration::from_millis(350);
@@ -40,7 +40,7 @@ pub fn stream_client() -> Client {
     shared_client(&STREAM_CLIENT, Duration::from_secs(5 * 60))
 }
 
-pub fn parse_json<T: for<'de> Deserialize<'de>>(response: Response) -> Result<T, RequestError> {
+pub fn parse_json<T: DeserializeOwned>(response: Response) -> Result<T, RequestError> {
     let status = response.status();
     let body = response.text().map_err(|err| RequestError {
         message: format!("Failed to read API response: {err}"),
@@ -71,14 +71,14 @@ pub fn status_error(status: StatusCode, body: &str) -> RequestError {
 }
 
 fn is_out_of_quota(body: &str) -> bool {
-    serde_json::from_str::<Value>(body)
-        .ok()
-        .and_then(|value| value.get("error").cloned())
-        .is_some_and(|error| {
-            ["code", "type"]
-                .iter()
-                .any(|field| error.get(field).and_then(Value::as_str) == Some("insufficient_quota"))
-        })
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return false;
+    };
+    value.get("error").is_some_and(|error| {
+        ["code", "type"]
+            .iter()
+            .any(|field| error.get(field).and_then(Value::as_str) == Some("insufficient_quota"))
+    })
 }
 
 fn parse_api_error(body: &str) -> Option<String> {
