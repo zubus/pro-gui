@@ -2,6 +2,7 @@ use pro_gui::providers::*;
 
 #[test]
 fn each_models_prefix_routes_it_to_its_api() {
+    assert_eq!(Provider::of("gemini-4-neon"), Provider::Gemini);
     assert_eq!(Provider::of("gemini-4-carbon"), Provider::Gemini);
     assert_eq!(Provider::of("gemini-4-argon"), Provider::Gemini);
     assert_eq!(Provider::of("claude-fable-5-2"), Provider::Anthropic);
@@ -36,6 +37,31 @@ fn each_model_gets_its_own_ladder_and_limit() {
     assert_eq!(clamp_output_tokens("gpt-6-astra-pro", 262_144), 128_000);
     assert_eq!(clamp_output_tokens("gemini-4-argon", 262_144), 262_144);
     assert_eq!(clamp_output_tokens("claude-fable-5-2", 262_144), 128_000);
+}
+
+#[test]
+fn gemini_4_neon_is_listed_with_long_decode_and_xhigh_thinking() {
+    assert_eq!(model_display_name("gemini-4-neon"), "Gemini 4 Neon");
+    assert_eq!(max_output_tokens("gemini-4-neon"), MAX_OUTPUT_TOKENS);
+    assert_eq!(clamp_output_tokens("gemini-4-neon", 262_144), 262_144);
+    assert_eq!(
+        effort_options("gemini-4-neon"),
+        &["low", "medium", "high", "xhigh"]
+    );
+    assert_eq!(default_reasoning_effort("gemini-4-neon"), "xhigh");
+    assert_eq!(
+        effort_options("gemini-4-carbon"),
+        &["low", "medium", "high"]
+    );
+    assert_eq!(default_reasoning_effort("gemini-4-carbon"), "high");
+    assert_eq!(request_service_tier("gemini-4-neon", true), "priority");
+    assert!(supports_priority("gemini-4-neon"));
+    assert!(use_background_mode("gemini-4-neon"));
+    assert!(
+        model_groups()
+            .iter()
+            .any(|group| group.iter().any(|option| option.id == "gemini-4-neon"))
+    );
 }
 
 #[test]

@@ -14,10 +14,12 @@ use super::{
 };
 use crate::models::{ModelOption, RequestSpec, TurnSnapshot, WorkerEvent, format_compact_count};
 
+const NEON_MODEL: &str = "gemini-4-neon";
 const CARBON_MODEL: &str = "gemini-4-carbon";
 const ARGON_MODEL: &str = "gemini-4-argon";
-pub const THINKING_LEVELS: &[&str] = &["low", "medium", "high"];
-pub const DEFAULT_THINKING_LEVEL: &str = "high";
+const LONG_DECODE_MODELS: &[&str] = &[NEON_MODEL, CARBON_MODEL, ARGON_MODEL];
+const THINKING_LEVELS: &[&str] = &["low", "medium", "high"];
+const NEON_THINKING_LEVELS: &[&str] = &["low", "medium", "high", "xhigh"];
 pub const THINKING_SUMMARIES: &str = "auto";
 pub const LONG_DECODE_MAX_OUTPUT_TOKENS: i64 = 1_048_576;
 const MAX_OUTPUT_TOKENS: i64 = 65_536;
@@ -29,6 +31,11 @@ const MAX_EMPTY_STREAMS: u32 = 3;
 const MAX_BACKOFF_SECONDS: u64 = 30;
 
 const MODEL_OPTIONS: &[ModelOption] = &[
+    ModelOption {
+        id: NEON_MODEL,
+        label: "Gemini 4 Neon",
+        detail: "Google, newest frontier model, long answers up to 1M tokens",
+    },
     ModelOption {
         id: CARBON_MODEL,
         label: "Gemini 4 Carbon",
@@ -50,10 +57,26 @@ pub fn is_gemini_model(model: &str) -> bool {
 }
 
 pub fn max_output_tokens(model: &str) -> i64 {
-    if model.starts_with(CARBON_MODEL) || model.starts_with(ARGON_MODEL) {
+    if LONG_DECODE_MODELS.iter().any(|id| model.starts_with(id)) {
         LONG_DECODE_MAX_OUTPUT_TOKENS
     } else {
         MAX_OUTPUT_TOKENS
+    }
+}
+
+pub fn thinking_levels(model: &str) -> &'static [&'static str] {
+    if model.starts_with(NEON_MODEL) {
+        NEON_THINKING_LEVELS
+    } else {
+        THINKING_LEVELS
+    }
+}
+
+pub fn default_thinking_level(model: &str) -> &'static str {
+    if model.starts_with(NEON_MODEL) {
+        "xhigh"
+    } else {
+        "high"
     }
 }
 
