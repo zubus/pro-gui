@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -261,10 +262,11 @@ pub fn pack_context(root: &Path, selected: &[String]) -> PackedContext {
         };
         secret_hits.extend(scan_secrets(rel_path, &content));
         let fence = fence_for(&content);
-        text.push_str(&format!(
+        let _ = write!(
+            text,
             "### {rel_path}\n\n{fence}{lang}\n{content}\n{fence}\n\n",
             lang = language_hint(rel_path),
-        ));
+        );
         included += 1;
     }
 

@@ -1,7 +1,7 @@
 use super::*;
 
 impl ProGuiApp {
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(super) fn render_turn(
         ui: &mut egui::Ui,
         turn: &Turn,
@@ -16,10 +16,7 @@ impl ProGuiApp {
         answer_cache: &mut HashMap<i64, CachedAnswerBlocks>,
         attachment_textures: &HashMap<i64, Option<TextureHandle>>,
     ) -> Option<TurnAction> {
-        let is_editing = editing
-            .as_ref()
-            .map(|edit| edit.turn_id == turn.id)
-            .unwrap_or(false);
+        let is_editing = editing.as_ref().is_some_and(|edit| edit.turn_id == turn.id);
         let column = ui.available_width();
         let user_width = if is_editing {
             column

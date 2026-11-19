@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use super::*;
 
 impl ProGuiApp {
@@ -263,10 +265,9 @@ impl ProGuiApp {
                 || (response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)));
             let dismiss = ui.small_button("Cancel").clicked()
                 || ui.input(|input| input.key_pressed(egui::Key::Escape));
-            if dismiss {
-            } else if apply && !draft.trim().is_empty() {
+            if apply && !dismiss && !draft.trim().is_empty() {
                 self.set_composer_model(openai::normalize_model(&draft));
-            } else {
+            } else if !dismiss {
                 self.custom_model_input = Some(draft);
             }
         }
@@ -695,7 +696,7 @@ pub(super) fn render_big_text(
             })
             .inner;
         editor.focused = false;
-        editor.history = Default::default();
+        editor.history = bigtext::History::default();
         return response;
     }
 
@@ -833,7 +834,7 @@ pub(super) fn assemble_blocks(
     let mut ranges = Vec::with_capacity(blocks.len());
 
     for (index, block) in blocks.iter().enumerate() {
-        prompt.push_str(&format!("## Block {}: {}\n\n", index + 1, block.label));
+        let _ = write!(prompt, "## Block {}: {}\n\n", index + 1, block.label);
         let start = prompt.len();
         prompt.push_str(&block.text);
         ranges.push((block.label.clone(), start, prompt.len()));

@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use anyhow::Context as _;
 
 use super::*;
@@ -55,31 +57,35 @@ pub(super) fn conversation_markdown(conversation: &Conversation) -> String {
         out.push_str("\n\n");
     }
     for turn in &conversation.turns {
-        out.push_str(&format!(
+        let _ = write!(
+            out,
             "## You ({})\n\n{}\n\n",
             turn.created_at, turn.prompt_text
-        ));
+        );
         for attachment in &turn.attachments {
-            out.push_str(&format!(
-                "*Attachment: {} ({}, {})*\n",
+            let _ = writeln!(
+                out,
+                "*Attachment: {} ({}, {})*",
                 attachment.file_name,
                 attachment.mime,
                 format_bytes(attachment.byte_len)
-            ));
+            );
         }
         if !turn.attachments.is_empty() {
             out.push('\n');
         }
-        out.push_str(&format!(
+        let _ = write!(
+            out,
             "## {} ({}, {})\n\n",
             turn.model, turn.updated_at, turn.status
-        ));
-        out.push_str(&format!(
+        );
+        let _ = write!(
+            out,
             "`model={} reasoning.effort={} service_tier={} max_output_tokens={}`\n\n",
             turn.model, turn.reasoning_effort, turn.service_tier, turn.max_output_tokens
-        ));
+        );
         if let Some(error) = &turn.error_text {
-            out.push_str(&format!("> Error: {error}\n\n"));
+            let _ = write!(out, "> Error: {error}\n\n");
         }
         if !turn.answer_text.is_empty() {
             out.push_str(&turn.answer_text);

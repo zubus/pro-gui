@@ -139,7 +139,7 @@ pub struct ProGuiApp {
     banner_timer: Option<(String, Instant)>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct TurnRuntime {
     note: Option<String>,
     auto_retry_attempts: u8,
@@ -657,8 +657,7 @@ impl ProGuiApp {
                 let restart = self
                     .banner_timer
                     .as_ref()
-                    .map(|(text, _)| *text != current)
-                    .unwrap_or(true);
+                    .is_none_or(|(text, _)| *text != current);
                 if restart {
                     self.banner_timer = Some((current, Instant::now()));
                     ctx.request_repaint_after(BANNER_LIFETIME);
@@ -750,7 +749,7 @@ impl ProGuiApp {
     }
 
     fn save_selected_model_setting(&mut self) {
-        let normalized = openai::normalize_model(&self.selected_model).to_owned();
+        let normalized = openai::normalize_model(&self.selected_model);
         if normalized != self.selected_model {
             self.selected_model = normalized;
         }

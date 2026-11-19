@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use super::*;
 
 impl ProGuiApp {
@@ -116,10 +118,9 @@ impl ProGuiApp {
             self.save_selected_model_setting();
         }
 
-        let should_rename = self
-            .selected_conversation()
-            .map(|conversation| conversation.turns.is_empty() && conversation.title == "New chat")
-            .unwrap_or(false);
+        let should_rename = self.selected_conversation().is_some_and(|conversation| {
+            conversation.turns.is_empty() && conversation.title == "New chat"
+        });
 
         if should_rename {
             let title_source = if prompt.is_empty() {
@@ -320,7 +321,7 @@ impl ProGuiApp {
         }
         if self.conversations[conversation_index].turns[turn_index + 1..]
             .iter()
-            .any(|turn| turn.is_pending())
+            .any(Turn::is_pending)
         {
             self.banner = Some(
                 "A later message is still running. Cancel it before resending this one.".to_owned(),
@@ -495,13 +496,7 @@ impl ProGuiApp {
                 String::new()
             };
             providers::spawn_cancel_turn(self.tx.clone(), turn_id, response_id, model, api_key);
-            self.runtime
-                .entry(turn_id)
-                .or_insert(TurnRuntime {
-                    note: None,
-                    auto_retry_attempts: 0,
-                })
-                .note = Some("Cancel requested...".to_owned());
+            self.runtime.entry(turn_id).or_default().note = Some("Cancel requested...".to_owned());
         }
     }
 
@@ -755,13 +750,7 @@ impl ProGuiApp {
                 }
 
                 if turn.is_pending() {
-                    self.runtime
-                        .entry(turn.id)
-                        .or_insert(TurnRuntime {
-                            note: None,
-                            auto_retry_attempts: 0,
-                        })
-                        .note = None;
+                    self.runtime.entry(turn.id).or_default().note = None;
                 } else {
                     self.runtime.remove(&turn.id);
                 }
@@ -908,12 +897,13 @@ pub(super) fn foreign_exchanges(
             0 => String::new(),
             count => format!("\n[{count} attached image(s)]"),
         };
-        exchanges.push_str(&format!(
+        let _ = write!(
+            exchanges,
             "<user>\n{}{images}\n</user>\n<assistant model=\"{}\">\n{}\n</assistant>\n\n",
             history_text(turn, ranges),
             turn.model,
             turn.answer_text.trim()
-        ));
+        );
     }
     if exchanges.is_empty() {
         return exchanges;
@@ -972,7 +962,7 @@ pub(super) fn history_text(turn: &Turn, ranges: &HashMap<i64, Vec<BlockRange>>) 
             continue;
         }
         if let Some(body) = turn.prompt_text.get(*start..*end) {
-            text.push_str(&format!("## {label}\n\n{}\n\n", body.trim_end()));
+            let _ = write!(text, "## {label}\n\n{}\n\n", body.trim_end());
         }
     }
     text.push_str(split_prompt(turn).1.trim());
