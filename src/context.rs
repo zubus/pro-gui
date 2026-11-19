@@ -22,13 +22,14 @@ pub fn approx_tokens_for_bytes(bytes: u64) -> usize {
     (bytes / 4) as usize
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileEntry {
     pub rel_path: String,
     pub size: u64,
     pub skip_reason: Option<&'static str>,
 }
 
+#[derive(Debug)]
 pub struct WorkspaceTree {
     pub root: PathBuf,
     pub files: Vec<FileEntry>,
@@ -36,7 +37,7 @@ pub struct WorkspaceTree {
     pub extensions: Vec<(String, usize)>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct DirNode {
     pub dirs: BTreeMap<String, DirNode>,
     pub files: Vec<usize>,
@@ -125,12 +126,13 @@ pub fn extension_of(rel_path: &str) -> String {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct PathFilter {
     include: Vec<Term>,
     exclude: Vec<Term>,
 }
 
+#[derive(Debug)]
 enum Term {
     Substring(String),
     NameGlob(String),
@@ -227,6 +229,7 @@ fn has_binary_extension(rel_path: &str) -> bool {
     BINARY_EXTS.contains(&extension_of(rel_path).as_str())
 }
 
+#[derive(Debug)]
 pub struct PackedContext {
     pub text: String,
     pub included: usize,
@@ -314,7 +317,7 @@ fn language_hint(rel_path: &str) -> &'static str {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SecretHit {
     pub rel_path: String,
     pub line: usize,

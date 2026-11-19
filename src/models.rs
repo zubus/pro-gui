@@ -1,3 +1,5 @@
+use std::fmt;
+
 use chrono::Local;
 
 #[derive(Clone, Debug)]
@@ -127,6 +129,7 @@ impl Turn {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelOption {
     pub id: &'static str,
     pub label: &'static str,
@@ -202,7 +205,7 @@ pub enum WorkerEvent {
     Snapshot(TurnSnapshot),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AppSettings {
     pub api_key: String,
     pub gemini_api_key: String,
@@ -236,6 +239,30 @@ impl Default for AppSettings {
             paste_block_kb: 32,
             show_context_panel: false,
         }
+    }
+}
+
+impl fmt::Debug for AppSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let key = |value: &str| if value.is_empty() { "" } else { "<redacted>" };
+        f.debug_struct("AppSettings")
+            .field("api_key", &key(&self.api_key))
+            .field("gemini_api_key", &key(&self.gemini_api_key))
+            .field("anthropic_api_key", &key(&self.anthropic_api_key))
+            .field("selected_model", &self.selected_model)
+            .field("render_markdown_answers", &self.render_markdown_answers)
+            .field("render_latex_blocks", &self.render_latex_blocks)
+            .field(
+                "auto_resend_failed_answers",
+                &self.auto_resend_failed_answers,
+            )
+            .field("use_priority_processing", &self.use_priority_processing)
+            .field("enter_sends", &self.enter_sends)
+            .field("show_request_chips", &self.show_request_chips)
+            .field("font_size", &self.font_size)
+            .field("paste_block_kb", &self.paste_block_kb)
+            .field("show_context_panel", &self.show_context_panel)
+            .finish()
     }
 }
 
